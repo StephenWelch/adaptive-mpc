@@ -1,0 +1,13 @@
+[project]
+name = "adaptive-mpc"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "casadi>=3.7.0",
+    "matplotlib>=3.10.1",
+    "mujoco>=3.3.1",
+    "numpy>=2.2.4",
+    "rerun-sdk>=0.22.1",
+]

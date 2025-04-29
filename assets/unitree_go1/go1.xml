@@ -238,6 +238,13 @@
     <motor class="knee" name="RL_calf" joint="RL_calf_joint"/>
   </actuator>
 
+  <sensor>
+    <touch name="FR_contact" site="FR"/>
+    <touch name="FL_contact" site="FL"/>
+    <touch name="RR_contact" site="RR"/>
+    <touch name="RL_contact" site="RL"/>
+  </sensor>
+
   <keyframe>
     <key name="home" qpos="0 0 0.27 1 0 0 0 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8"
       ctrl="0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8"/>

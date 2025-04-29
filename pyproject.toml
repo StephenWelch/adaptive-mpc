@@ -1,7 +1,7 @@
 [project]
 name = "adaptive-mpc"
 version = "0.1.0"
-description = "Add your description here"
+description = "Adaptive MPC for quadruped control"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -12,3 +12,13 @@ dependencies = [
     "rerun-sdk>=0.22.1",
     "scipy>=1.15.2",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+adaptive-mpc = "scripts.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/adaptive_mpc"]

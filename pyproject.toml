@@ -10,4 +10,5 @@ dependencies = [
     "mujoco>=3.3.1",
     "numpy>=2.2.4",
     "rerun-sdk>=0.22.1",
+    "scipy>=1.15.2",
 ]

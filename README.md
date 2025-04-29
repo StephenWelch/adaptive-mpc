@@ -46,3 +46,10 @@ pip install -e ".[dev]"
 # Run tests
 pytest
 ```
+
+## Notes
+adaptive needs:
+B
+P
+e_hat
+e

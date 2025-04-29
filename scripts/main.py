@@ -71,6 +71,7 @@ def main():
             0, 0, 0,
             0, 0, 0
         ])*-1
+        
         p_c_des = np.array([0.022, 0, 0.278])
         theta_des = np.zeros(3)
         R_des = np.array(math_utils.euler_to_rotation_matrix(*theta_des))
@@ -133,20 +134,24 @@ def main():
         mujoco.mj_resetDataKeyframe(model, data, model.keyframe("home").id)
 
         sol = None
+        F_des = np.zeros(const.N_FEET*3)
         opti.solver("ipopt", {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'})
 
         start = time.time()
+        ctr = 0
         while viewer.is_running():
             step_start = time.time()
 
             mujoco.mj_step(model, data)
 
-            rr.set_time_seconds("mj_time", data.time)
-            update_opt(model, data, sol)
-            if sol is not None:
-                opti.set_initial(F, F_des)
-            sol = opti.solve()
-            F_des = sol.value(F)
+            if ctr % int(0.02/model.opt.timestep) == 0:
+                rr.set_time_seconds("mj_time", data.time)
+                update_opt(model, data, sol)
+                if sol is not None:
+                    opti.set_initial(F, sol.value(F))
+                sol = opti.solve()
+                F_des = sol.value(F)
+            ctr += 1
 
             ctrl_loop(model, data, F_des)
 
@@ -156,9 +161,13 @@ def main():
 
             viewer.sync()
 
-            time_until_next_step = model.opt.timestep - (time.time() - step_start)
-            if time_until_next_step > 0:
-                time.sleep(time_until_next_step)
+            time_elapsed = time.time() - step_start
+            rr.log("rtf", rr.Scalar(time_elapsed/model.opt.timestep))
+            # if time_elapsed > model.opt.timestep:
+            #     print(f"Overrun! RTF: {time_elapsed/model.opt.timestep}") 
+            # time_until_next_step = model.opt.timestep - time_elapsed
+            # if time_until_next_step > 0:
+            #     time.sleep(time_until_next_step)
 
 if __name__ == "__main__":
     main()

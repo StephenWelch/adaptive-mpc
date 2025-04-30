@@ -68,8 +68,9 @@ def main():
             -150, 150, 150
         ])*-1
         K_D = np.diag([
-            0, 0, 0,
-            0, 0, 0
+            1, 1, 1,
+            -1, -1, -1,
+            # 0, 0, 0
         ])*-1
         
         p_c_des = np.array([0.022, 0, 0.278])
@@ -80,7 +81,7 @@ def main():
         K = np.block([-K_P, -K_D])
         e = np.hstack([
             p_c - p_c_des,
-            math_utils.log_map(R_des @ R.T).flatten(),
+            math_utils.log_so3(R_des @ R.T).flatten(),
             p_c_dot - p_c_dot_des,
             w_b - w_b_des,
         ]).reshape(12, 1)

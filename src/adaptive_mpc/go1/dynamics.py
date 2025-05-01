@@ -2,7 +2,6 @@ import numpy as np
 
 from mujoco._structs import MjModel, MjData
 from adaptive_mpc import math_utils
-from adaptive_mpc.go1 import constants as const
 
 
 def ref_dynamics(
@@ -43,8 +42,8 @@ def get_H(M, A):
 
 def get_A(com_pos_w: np.ndarray, feet_pos_w: list[np.ndarray]):
     return np.block([
-        [np.eye(3) for _ in range(const.N_FEET)],
-        [math_utils.skew(feet_pos_w[i] - com_pos_w) for i in range(const.N_FEET)]
+        [np.eye(3) for _ in range(len(feet_pos_w))],
+        [math_utils.skew(feet_pos_w[i] - com_pos_w) for i in range(len(feet_pos_w))]
     ])
 
 def get_B():
@@ -60,10 +59,10 @@ def get_G():
         [np.zeros((3, 1))],
     ])
 
-def get_M(model: MjModel, data: MjData):
-    m = model.body("trunk").mass
-    I_G = data.body("trunk").ximat.reshape(3, 3)
+def get_M(m, I_G):
     return np.block([
         [m*np.eye(3), np.zeros((3, 3))],
         [np.zeros((3, 3)), I_G],
     ])
+
+def 

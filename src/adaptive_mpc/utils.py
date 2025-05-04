@@ -62,7 +62,7 @@ class PeriodicCallback(Generic[T]):
             result = periodic(i)  # Only calls my_callback when i is 2
     """
     
-    def __init__(self, callback: Callable[..., T], n: int) -> None:
+    def __init__(self, callback: Callable[..., T] | None = None, n: int = 1) -> None:
         """Initialize the periodic callback.
         
         Args:
@@ -84,6 +84,6 @@ class PeriodicCallback(Generic[T]):
             The result of the callback if it was called, None otherwise
         """
         self.count += 1
-        if self.count % self.n == 0:
+        if self.count % self.n == 0 and self.callback is not None:
             return self.callback(*args, **kwargs)
         return None

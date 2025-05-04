@@ -7,14 +7,15 @@ from adaptive_mpc import math_utils
 def ref_dynamics(
     X_hat,
     F_hat,
-    u_a,
+    u_qp,
+    u_adaptive,
     theta_hat,
     D,
     H_bar,
     B,
     G
 ):
-    return D@X_hat + H_bar@F_hat + B@(u_a + G + theta_hat)
+    return D@X_hat + H_bar@F_hat + B@(u_qp + u_adaptive + G + theta_hat)
 
 def state_vector(
     p_c,
@@ -32,12 +33,14 @@ def state_vector(
 def get_D(roll, pitch, yaw):
     D = np.zeros((12, 12))
     D[0:3, 6:9] = np.eye(3)
-    D[3:6, 9:12] = math_utils.get_R_z(roll, pitch, yaw)
+    D[3:6, 9:12] = math_utils.R_z(yaw)
     return D
 
 def get_H(M, A):
-    H = np.zeros((12, 12))
-    H[6:12, 0:6] = M.inv() @ A
+    H = np.block([
+        [np.zeros((6, 12))],
+        [np.linalg.inv(M) @ A],
+    ])
     return H
 
 def get_A(com_pos_w: np.ndarray, feet_pos_w: list[np.ndarray]):
@@ -64,5 +67,3 @@ def get_M(m, I_G):
         [m*np.eye(3), np.zeros((3, 3))],
         [np.zeros((3, 3)), I_G],
     ])
-
-def 

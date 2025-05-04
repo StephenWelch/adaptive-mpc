@@ -29,6 +29,13 @@ def log_so3(R: np.ndarray) -> np.ndarray:
         return skew_inv(R - R.T) / 2.0
     return skew_inv(R - R.T) * θ / (2.0 * np.sin(θ))
 
+def rotation_error_rpy(R1: np.ndarray, R2: np.ndarray) -> np.ndarray:
+    R_err = R2 @ R1.T
+    roll = np.arctan2(R_err[2,1], R_err[2,2])
+    pitch = np.arctan2(-R_err[2,0], np.hypot(R_err[2,1], R_err[2,2]))
+    yaw = np.arctan2(R_err[1,0], R_err[0,0])
+    return np.array([roll, pitch, yaw])
+
 def quat_to_rpy(q):
     return np.array([
         np.arctan2(2*(q[0]*q[1] + q[2]*q[3]), 1 - 2*(q[1]**2 + q[2]**2)),
@@ -36,14 +43,25 @@ def quat_to_rpy(q):
         np.arctan2(2*(q[0]*q[3] + q[1]*q[2]), 1 - 2*(q[2]**2 + q[3]**2)),
     ])
 
-def euler_to_rotation_matrix(roll, pitch, yaw):
-    return np.array([
-        [np.cos(yaw), -np.sin(yaw), 0],
-        [np.sin(yaw), np.cos(yaw), 0],
-        [0, 0, 1],
-    ])
+def quat_to_rot_mat(q):
+    # Normalize quaternion
+    norm = np.linalg.norm(q)
+    if not np.isclose(norm, 1.0):
+        q /= norm
 
-def rotation_matrix_to_euler(R: np.ndarray) -> np.ndarray:
+    w, x, y, z = q[0], q[1], q[2], q[3]
+
+    R = np.array([
+        [1 - 2*(y**2 + z**2),   2*(x*y - w*z),     2*(x*z + w*y)],
+        [2*(x*y + w*z),     1 - 2*(x**2 + z**2),   2*(y*z - w*x)],
+        [2*(x*z - w*y),     2*(y*z + w*x),     1 - 2*(x**2 + y**2)]
+    ])
+    return R
+
+def rpy_to_rot_mat(roll, pitch, yaw):
+    return R_z(yaw) @ R_y(pitch) @ R_x(roll)
+
+def rot_mat_to_euler(R: np.ndarray) -> np.ndarray:
     return np.array([
         np.arctan2(R[2,1], R[2,2]),
         np.arcsin(R[2,0]),
@@ -62,9 +80,23 @@ def rotation_matrix_to_euler(R: np.ndarray) -> np.ndarray:
 #     ], dtype=float) / (2.0 * np.sin(theta))
 #     return theta * axis
 
-def get_R_z(roll: float, pitch: float, yaw: float):
+def R_z(yaw: float):
     return np.array([
         [np.cos(yaw), -np.sin(yaw), 0],
         [np.sin(yaw), np.cos(yaw), 0],
         [0, 0, 1],
     ]) 
+
+def R_y(pitch: float):
+    return np.array([
+        [np.cos(pitch), 0, np.sin(pitch)],
+        [0, 1, 0],
+        [-np.sin(pitch), 0, np.cos(pitch)],
+    ])
+
+def R_x(roll: float):
+    return np.array([
+        [1, 0, 0],
+        [0, np.cos(roll), -np.sin(roll)],
+        [0, np.sin(roll), np.cos(roll)],
+    ])

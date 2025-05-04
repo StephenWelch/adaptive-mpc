@@ -25,10 +25,12 @@ def main():
 
     opti = ca.Opti("conic")
 
-    PENALTY_L2_GRF = 0.01
-    PENALTY_L2_GRF_SLEW = 0.001
-    F_MIN = -200.0
-    F_MAX = 200.0
+    # PENALTY_L2_GRF = 0.01
+    # PENALTY_L2_GRF_SLEW = 0.001
+    PENALTY_L2_GRF = 0.0
+    PENALTY_L2_GRF_SLEW = 0.0
+    F_MIN = np.array([-500.0, -500.0, -500.0]).repeat(const.N_FEET)
+    F_MAX = np.array([500.0, 500.0, 0.0]).repeat(const.N_FEET)
     A = opti.parameter(6, N) # Actuation force
     b = opti.parameter(6, 1) # External force
     C = opti.parameter(const.N_FEET*3) # Contact flag
@@ -40,72 +42,73 @@ def main():
     opti.subject_to(C * F >= F_MIN)
     opti.subject_to(C * F <= F_MAX)
 
-    m = model.body("trunk").mass
+    m = model.body("trunk").subtreemass*0.9
 
     G = dynamics.get_G()
 
     K_P = np.diag([
-        500, 500, 500,
-        -150, 150, 150
+        100, 100, 100,
+        1000, 1000, 1000
     ])*-1
     K_D = np.diag([
-        1, 1, 1,
-        -1, -1, -1,
-        # 0, 0, 0
+        # 1, 1, 1,
+        # 1, 1, 1,
+        0, 0, 0,
+        0, 0, 0
     ])*-1
     K = np.block([-K_P, -K_D])
 
     S_ = np.diag([
         1, 1, 1,
-        10, 10, 10
+        1, 1, 1
     ])
-    opti.set_value(S, ca.DM(S_.tolist()))
+    opti.set_value(S, S_)
 
-    def update_opt(model: MjModel, data: MjData, sol_last: ca.OptiSol | None = None, log:bool=False):
-        I_G = data.body("trunk").ximat.reshape(3, 3)
-        R = data.body("trunk").xmat.reshape(3, 3)
-        # theta = math_utils.quat_to_rpy(data.qpos[3:7])
-        p_c = data.body("trunk").xipos
-        p_i = [data.site(const.FEET_SITE_NAMES[n]).xpos for n in const.LEG_NAMES]
-        p_c_dot = data.qvel[7:10]
-        w_b = R.T @ data.qvel[10:13]
+    def update_opt(
+        p_c, theta, p_c_dot, w_b, 
+        F_last_: np.ndarray, 
+        M_: np.ndarray,
+        A_: np.ndarray
+    ):
+        # Rotation matrix from world frame to body frame from state euler angles
+        b_R_w = math_utils.rpy_to_rot_mat(*theta)
 
-        M = dynamics.get_M(m, I_G)
-        A_ = dynamics.get_A(p_c, p_i)
-        
-        p_c_des = np.array([0.022, 0, 0.278])
-        theta_des = np.zeros(3)
-        R_des = np.array(math_utils.euler_to_rotation_matrix(*theta_des))
+        p_c_des = np.array([0.0223, 0.002, 0.2895])
+
+        des_pitch = 0
+        # des_pitch = np.interp(np.sin(2*np.pi*0.5*data.time), [-1, 1], [np.deg2rad(-10), np.deg2rad(10)])
+
+        des_roll = 0
+        des_roll = np.interp(np.sin(2*np.pi*0.5*data.time), [-1, 1], [np.deg2rad(-10), np.deg2rad(10)])
+
+        des_yaw = 0
+        # des_yaw = np.interp(np.sin(2*np.pi*0.5*data.time), [-1, 1], [np.deg2rad(-10), np.deg2rad(10)])
+
+        theta_des = np.array([des_roll, des_pitch, des_yaw])
+        R_des = np.array(math_utils.rpy_to_rot_mat(*theta_des))
         p_c_dot_des = np.array([0, 0, 0])
         w_b_des = np.array([0, 0, 0])
         e = np.hstack([
             p_c - p_c_des,
-            math_utils.log_so3(R_des @ R.T).flatten(),
+            math_utils.log_so3(R_des @ b_R_w).flatten(),
             p_c_dot - p_c_dot_des,
             w_b - w_b_des,
         ]).reshape(12, 1)
         u = K @ e
-        b_ = M @ (u + G)
+        b_ = M_ @ (u + G)
 
-        
-
-        if log:
-            for i, name in enumerate(["u/lin/x", "u/lin/y", "u/lin/z", "u/ang/x", "u/ang/y", "u/ang/z"]):
-                rr.log(name, rr.Scalar(u[i]))
-            for i, name in enumerate([
-                "error/pos/lin/x", "error/pos/lin/y", "error/pos/lin/z",
-                "error/pos/ang/x", "error/pos/ang/y", "error/pos/ang/z",
-                "error/vel/lin/x", "error/vel/lin/y", "error/vel/lin/z",
-                "error/vel/ang/x", "error/vel/ang/y", "error/vel/ang/z",
-            ]):
-                rr.log(name, rr.Scalar(-e[i]))
+        for i, name in enumerate(["u/lin/x", "u/lin/y", "u/lin/z", "u/ang/x", "u/ang/y", "u/ang/z"]):
+            rr.log(name, rr.Scalar(b_[i]))
+        for i, name in enumerate([
+            "error/pos/lin/x", "error/pos/lin/y", "error/pos/lin/z",
+            "error/pos/ang/x", "error/pos/ang/y", "error/pos/ang/z",
+            "error/vel/lin/x", "error/vel/lin/y", "error/vel/lin/z",
+            "error/vel/ang/x", "error/vel/ang/y", "error/vel/ang/z",
+        ]):
+            rr.log(name, rr.Scalar(-e[i]))
 
         contact_flags = [data.sensor(const.FEET_CONTACT_SENSOR_NAMES[n]).data > 0.0 for n in const.LEG_NAMES]
         C_ = np.concatenate([np.ones(3)*f for f in contact_flags])
-        if sol_last is not None:
-            F_last_ = sol_last.value(F_last)
-        else:
-            F_last_ = np.zeros((const.N_FEET*3))
 
         # opti.set_value(A, ca.DM(A_.tolist()))
         # opti.set_value(b, ca.DM(b_.tolist()))
@@ -117,17 +120,16 @@ def main():
         opti.set_value(F_last, F_last_)
 
     def ctrl_loop(model: MjModel, data: MjData, F_des: np.ndarray):
-        for foot_idx, leg_name in enumerate(const.LEG_NAMES):
-            site_name = const.FEET_SITE_NAMES[leg_name]
-            act_idxs = const.LEG_ACT_IDXS[leg_name]
-            jnt_idxs = const.LEG_JNT_IDXS[leg_name]
+        J = []
+        for leg_name, site_name in const.FEET_SITE_NAMES.items():
+            jacp = np.zeros((3, model.nv))
+            mujoco.mj_jacSite(model, data, jacp, None, model.site(site_name).id)
+            J.append(jacp)
+        J = np.vstack(J)
 
-            J = sim_utils.compute_site_jacobian(model, data, model.site(site_name).id)[:3, jnt_idxs]
-            F = F_des[foot_idx*3:foot_idx*3+3]
+        data.ctrl[:] = (J.T @ F_des)[6:]
 
-            data.ctrl[act_idxs] = J.T @ F
-
-    rr.init("adaptive_mpc", spawn=True)
+    rr.init("adaptive_mpc", spawn=True, default_enabled=True)
     rr.set_time_seconds("mj_time", 0)
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
@@ -136,7 +138,14 @@ def main():
         mujoco.mj_resetDataKeyframe(model, data, model.keyframe("home").id)
 
         sol = None
-        F_des = np.zeros(const.N_FEET*3)
+        solve_rate = 500
+        solve_period = 1.0/solve_rate
+        if solve_period < model.opt.timestep:
+            raise ValueError(f"Solve rate is too high! {solve_period} < {model.opt.timestep}")
+        solve_decimation = int(solve_period / model.opt.timestep)
+        print(f"{solve_decimation=}")
+
+        F_des = np.zeros((const.N_FEET*3))
         # opti.solver("ipopt", {
         #     'ipopt.print_level': 0, 
         #     'print_time': 0, 
@@ -147,8 +156,8 @@ def main():
 
         solve_timer = Timer(
             PeriodicCallback(
-                lambda duration: print(f"Solve time: {duration}"),
-                100
+                # lambda duration: print(f"Solve time: {duration}"),
+                n=100
             ),
         )
 
@@ -159,13 +168,45 @@ def main():
             mujoco.mj_step(model, data)
             rr.set_time_seconds("mj_time", data.time)
 
-            if ctr % 1 == 0:
+            p_c = data.sensor("trunk_com_pos").data
+            theta = math_utils.quat_to_rpy(data.sensor("trunk_body_quat").data)
+            p_c_dot = data.sensor("trunk_com_linvel").data
+            w_b = data.sensor("trunk_com_angvel").data
+            p_i = [data.site(const.FEET_SITE_NAMES[n]).xpos for n in const.LEG_NAMES]
+
+            # Rotation matrix from world frame to body frame from state euler angles
+            b_R_w = math_utils.rpy_to_rot_mat(*theta)
+
+            # Grab diagonal of inertia matrix and reshape to 3x3 matrix
+            I_i = np.diag(model.body("trunk").inertia)
+
+            # Rotate inertia matrix to body frame
+            i_R_b = math_utils.quat_to_rot_mat(model.body("trunk").iquat)
+            I_b = i_R_b.T @ I_i @ i_R_b
+            I_G = b_R_w.T @ I_b @ b_R_w
+
+            M_ = dynamics.get_M(m, I_G)
+            A_ = dynamics.get_A(p_c, p_i)
+
+            if ctr % solve_decimation == 0:
                 with solve_timer:
-                    update_opt(model, data, sol)
-                    if F_des is not None:
-                        opti.set_initial(F, F_des)
+                    update_opt(p_c, theta, p_c_dot, w_b, F_des, M_, A_)
+                    opti.set_initial(F, F_des)
                     sol = opti.solve()
                     F_des = sol.value(F)
+
+            
+            X_hat = np.hstack([p_c, theta, p_c_dot, w_b])
+            F_hat = F_des # TODO
+            D = dynamics.get_D(*theta)
+            H_bar = dynamics.get_H(M_, A_)
+            B = dynamics.get_B()
+            G = dynamics.get_G()
+            
+            for leg_idx, leg_name in enumerate(const.LEG_NAMES):
+                for ax_idx, ax_name in enumerate(["x", "y", "z"]):
+                    rr.log(f"des_grf/{leg_name}/{ax_name}", rr.Scalar(F_des[leg_idx*3+ax_idx]))
+
             ctr += 1
 
             ctrl_loop(model, data, F_des)
@@ -177,7 +218,10 @@ def main():
             viewer.sync()
 
             time_elapsed = time.time() - step_start
-            rr.log("rtf", rr.Scalar(time_elapsed/model.opt.timestep))
+            rtf = time_elapsed/model.opt.timestep
+            if ctr % 100 == 0:
+                print(f"{rtf=}")
+            rr.log("rtf", rr.Scalar(rtf))
             # if time_elapsed > model.opt.timestep:
             #     print(f"Overrun! RTF: {time_elapsed/model.opt.timestep}") 
             # time_until_next_step = model.opt.timestep - time_elapsed

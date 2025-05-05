@@ -39,7 +39,7 @@ class SingleRigidBodyQP:
         
         S_ = np.diag([
             1, 1, 1,
-            1, 1, 1
+            10, 10, 10
         ])
         self.opti.set_value(self.S, S_)
 
@@ -100,10 +100,10 @@ class SingleRigidBodyL1Adaptation:
 
         x_e = np.zeros_like(alpha_hat)
         eps = 1.0
-        s = np.full_like(x_e, 0.01) 
+        s = np.full_like(x_e, 10) 
         h, dh_dx = math_utils.convex_function(alpha_hat, x_e, eps, s)
-        return self.Gamma @ math_utils.proj(alpha_hat, y_alpha, h, dh_dx)
-        # return self.Gamma @ y_alpha
+        # return self.Gamma @ math_utils.proj(alpha_hat, y_alpha, h, dh_dx)
+        return self.Gamma @ y_alpha
         
     def _beta_hat_dot(self, beta_hat, e, e_hat):
         e_tilde = e_hat - e
@@ -111,10 +111,10 @@ class SingleRigidBodyL1Adaptation:
 
         x_e = np.zeros_like(beta_hat)
         eps = 1.0
-        s = np.full_like(x_e, 0.01) 
+        s = np.full_like(x_e, 10) 
         h, dh_dx = math_utils.convex_function(beta_hat, x_e, eps, s)
-        return self.Gamma @ math_utils.proj(beta_hat, y_beta, h, dh_dx)
-        # return self.Gamma @ y_beta
+        # return self.Gamma @ math_utils.proj(beta_hat, y_beta, h, dh_dx)
+        return self.Gamma @ y_beta
         
     def __call__(self, e, e_hat):
         #TODO integrate alpha_hat, beta_hat with scipy
@@ -158,6 +158,7 @@ def compute_error(
 ):
     R_des = math_utils.rpy_to_rot_mat(*des_theta)
     b_R_w = math_utils.rpy_to_rot_mat(*theta)
+    # b_R_w = math_utils.R_z(theta[2])
     return np.hstack([
         p_c - des_p_c,
         math_utils.log_so3(R_des @ b_R_w).flatten(),

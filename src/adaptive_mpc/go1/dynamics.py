@@ -3,19 +3,30 @@ import numpy as np
 from mujoco._structs import MjModel, MjData
 from adaptive_mpc import math_utils
 
+class Go1ReferenceModel:
+    def __init__(self, dt: float):
+        self.dt = dt
 
-def ref_dynamics(
-    X_hat,
-    F_hat,
-    u_qp,
-    u_adaptive,
-    theta_hat,
-    D,
-    H_bar,
-    B,
-    G
-):
-    return D@X_hat + H_bar@F_hat + B@(u_qp + u_adaptive + G + theta_hat)
+    def ref_dynamics(
+        X_hat,
+        F_hat,
+        u_qp,
+        u_adaptive,
+        theta_hat,
+        D,
+        H_bar,
+        B,
+        G
+    ):
+        return D@X_hat + H_bar@F_hat + B@(u_qp + u_adaptive + G + theta_hat)
+    
+    def __call__(self, 
+                 p_c, theta, p_c_dot, w_b, # Initial state
+                 u_qp, u_adaptive, theta_hat, # Control inputs
+                 D, H_bar, B, G, # Dynamics
+                 ):
+        X_hat = state_vector(p_c, theta, p_c_dot, w_b)
+    
 
 def state_vector(
     p_c,

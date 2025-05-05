@@ -1,5 +1,6 @@
 import numpy as np
 
+from scipy.integrate import solve_ivp
 from mujoco._structs import MjModel, MjData
 from adaptive_mpc import math_utils
 
@@ -8,25 +9,37 @@ class Go1ReferenceModel:
         self.dt = dt
 
     def ref_dynamics(
+        self,
+        t,
         X_hat,
         F_hat,
         u_qp,
-        u_adaptive,
+        theta_hat_lpf,
         theta_hat,
         D,
         H_bar,
         B,
         G
     ):
-        return D@X_hat + H_bar@F_hat + B@(u_qp + u_adaptive + G + theta_hat)
+        x_dot = D@X_hat + H_bar@F_hat + B@(u_qp + theta_hat - theta_hat_lpf + G).squeeze()
+        # x_dot = D@X_hat + H_bar@F_hat + B@(u_qp + G).squeeze()
+        
+        return x_dot
     
     def __call__(self, 
                  p_c, theta, p_c_dot, w_b, # Initial state
-                 u_qp, u_adaptive, theta_hat, # Control inputs
+                 F_hat, u_qp, u_adaptive, theta_hat, # Control inputs
                  D, H_bar, B, G, # Dynamics
                  ):
         X_hat = state_vector(p_c, theta, p_c_dot, w_b)
-    
+        sol = solve_ivp(self.ref_dynamics, [0, self.dt], X_hat, args=(F_hat, u_qp, u_adaptive, theta_hat, D, H_bar, B, G), method='RK45', t_eval=[self.dt])
+        y = sol.y[:, -1]
+        return (
+            y[0:3], # p_c
+            y[3:6], # theta
+            y[6:9], # p_c_dot
+            y[9:12], # w_b    
+        )
 
 def state_vector(
     p_c,

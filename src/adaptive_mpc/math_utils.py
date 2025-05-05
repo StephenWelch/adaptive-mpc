@@ -1,14 +1,26 @@
 import numpy as np
 import scipy.signal as signal
+from collections import deque
 
 class SecondOrderLPF:
-    def __init__(self, w_n, zeta):
-        self.b = [w_n**2]
-        self.a = [1, 2*zeta*w_n, w_n**2]
-        self.lpf = signal.TransferFunction(self.b, self.a)
-        
-    def __call__(self, x):
-        return signal.lfilter(self.b, self.a, x)
+    def __init__(self, fs: float, w_n: float, zeta: float) -> None:
+        b = np.array([w_n**2])
+        a = np.array([1, 2*zeta*w_n, w_n**2])
+        b_d, a_d = signal.bilinear(b, a, fs)
+        self.b0, self.b1, self.b2 = b_d
+        _, self.a1, self.a2 = a_d
+        self.z1 = None
+        self.z2 = None
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        if self.z1 is None:
+            self.z1 = np.zeros_like(x)
+        if self.z2 is None:
+            self.z2 = np.zeros_like(x)
+        y = self.b0 * x + self.z1
+        self.z1 = self.b1 * x - self.a1 * y + self.z2
+        self.z2 = self.b2 * x - self.a2 * y
+        return y
 
 def rk4(f, x, h):
     k1 = f(x)
@@ -17,8 +29,30 @@ def rk4(f, x, h):
     k4 = f(x + h * k3)
     return x + h/6 * (k1 + 2*k2 + 2*k3 + k4)
 
-def proj(v, u):
-    return (v @ u) / (u @ u) * u
+def convex_function(x, x_e, eps, s):
+    # diff = x - x_e
+    h = ( (1+eps)*(x-x_e).T @ np.diag(1./s.squeeze()) @ (x-x_e) - 1 ) / eps
+    dh_dx = ( 2*(1+eps)*(x-x_e).T @ np.diag(1./s.squeeze()) ) / eps
+    return h, dh_dx
+
+def proj(x, x_d, h, dh_dx):
+    """
+    Projects x onto the constraint defined by h(x) = 0.
+    """
+    out_set = (h > 0) * (dh_dx*x_d > 0)
+    
+    # Compute the projection
+    if np.all(out_set):
+        x_proj = x_d - out_set * h * (dh_dx.T @ dh_dx) / (dh_dx @ dh_dx.T) @ x_d
+    else:
+        x_proj = x_d
+    
+    return x_proj
+
+    # in_set = (h > 0) * (dh_dx*x_d > 0)
+    
+    # Compute the projection
+    # return x_d - np.all(in_set) * h * (dh_dx.T @ dh_dx) / (dh_dx @ dh_dx.T) @ x_d
 
 def skew(v):
     return np.array([

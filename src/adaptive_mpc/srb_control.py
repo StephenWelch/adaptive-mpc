@@ -1,6 +1,8 @@
 import casadi as ca
 import numpy as np
+import rerun as rr
 from adaptive_mpc import math_utils
+from scipy.linalg import solve_continuous_lyapunov
 
 class SingleRigidBodyQP:
     def __init__(self, n_contact_pts: int):
@@ -14,8 +16,10 @@ class SingleRigidBodyQP:
         self.opti = ca.Opti("conic")
         self.opti.solver("osqp", dict(warm_start_primal=True, warm_start_dual=True), dict(verbose=False))
 
-        F_MIN = np.array([-500.0, -500.0, -500.0]).repeat(n_contact_pts)
-        F_MAX = np.array([500.0, 500.0, 0.0]).repeat(n_contact_pts)
+        # F_MIN = np.array([-500.0, -500.0, -500.0]).repeat(n_contact_pts)
+        # F_MAX = np.array([500.0, 500.0, 0.0]).repeat(n_contact_pts)
+        F_MIN = np.array([-50.0, -50.0, -50.0]).repeat(n_contact_pts)
+        F_MAX = np.array([50.0, 50.0, 50.0]).repeat(n_contact_pts)
 
         self.A = self.opti.parameter(6, self.N) # Contact Jacobian
         self.b = self.opti.parameter(6, 1) # Desired wrench
@@ -72,29 +76,48 @@ class SingleRigidBodyQP:
         return self.sol.value(self.F)
         
 class SingleRigidBodyL1Adaptation:
-    def __init__(self, dt: float):
+    def __init__(self, dt: float, B: np.ndarray, K: np.ndarray):
         self.dt = dt
-        self.P = None
+        self.B = B
+        self.A_m = np.block([
+            [np.zeros((6, 6)), np.eye(6)],
+            [K]
+        ])
+        print(f"{self.A_m=}")
+        self.Q_L = np.eye(12)*1.0
+        self.P = solve_continuous_lyapunov(self.A_m.T, self.Q_L)
+        # print(f"{self.P=}")
         self.Gamma = np.diag([1.0, 1.0, 5.0, 2.0, 5.0, 1.0]) * 1e3
-        self.B = None
-        self.alpha_hat = None
-        self.beta_hat = None
+        self.alpha_hat = np.zeros((6, 1))
+        self.beta_hat = np.zeros((6, 1))
         
-        self.theta_lpf = math_utils.SecondOrderLPF(w_n=60.0, zeta=0.7)
+        self.theta_lpf = math_utils.SecondOrderLPF(fs=1.0/dt, w_n=60.0, zeta=0.7)
         
     def _alpha_hat_dot(self, alpha_hat, e, e_hat):
         # e_hat is ref model err
         e_tilde = e_hat - e
         y_alpha = -self.B.T @ self.P @ e_tilde * np.linalg.norm(e)
-        return self.Gamma @ math_utils.proj(alpha_hat, y_alpha)
+
+        x_e = np.zeros_like(alpha_hat)
+        eps = 1.0
+        s = np.full_like(x_e, 0.01) 
+        h, dh_dx = math_utils.convex_function(alpha_hat, x_e, eps, s)
+        return self.Gamma @ math_utils.proj(alpha_hat, y_alpha, h, dh_dx)
+        # return self.Gamma @ y_alpha
         
     def _beta_hat_dot(self, beta_hat, e, e_hat):
         e_tilde = e_hat - e
         y_beta = -self.B.T @ self.P @ e_tilde
-        return self.Gamma @ math_utils.proj(beta_hat, y_beta)
+
+        x_e = np.zeros_like(beta_hat)
+        eps = 1.0
+        s = np.full_like(x_e, 0.01) 
+        h, dh_dx = math_utils.convex_function(beta_hat, x_e, eps, s)
+        return self.Gamma @ math_utils.proj(beta_hat, y_beta, h, dh_dx)
+        # return self.Gamma @ y_beta
         
     def __call__(self, e, e_hat):
-        # integrate alpha_hat, beta_hat with scipy
+        #TODO integrate alpha_hat, beta_hat with scipy
         self.alpha_hat = math_utils.rk4(
             lambda x: self._alpha_hat_dot(x, e, e_hat),
             self.alpha_hat,
@@ -109,8 +132,15 @@ class SingleRigidBodyL1Adaptation:
 
         theta_hat = self.alpha_hat * np.linalg.norm(e) + self.beta_hat
         theta_hat_lpf = self.theta_lpf(theta_hat)
+        # print(f"{self._alpha_hat_dot(self.alpha_hat, e, e_hat)=}")
+        # print(f"{self._beta_hat_dot(self.beta_hat, e, e_hat)=}")
+        # print(f"{self.alpha_hat=}")
+        # print(f"{self.beta_hat=}")
+        print(f"{theta_hat=}")
+        print(f"{theta_hat_lpf=}")
+        # print(f"{np.linalg.norm(e)=}")
 
-        return theta_hat_lpf, theta_hat
+        return theta_hat, theta_hat_lpf
     
         
 # def compute_pd_accel(

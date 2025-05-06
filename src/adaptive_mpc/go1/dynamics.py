@@ -21,7 +21,7 @@ class Go1ReferenceModel:
         B,
         G
     ):
-        x_dot = D@X_hat + H_bar@F_hat + B@(u_qp + theta_hat - theta_hat_lpf + G).squeeze()
+        x_dot = D@X_hat + H_bar@F_hat + B@(theta_hat - theta_hat_lpf + G).squeeze()
         return x_dot
     
     def __call__(self, 

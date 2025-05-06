@@ -87,7 +87,8 @@ class SingleRigidBodyL1Adaptation:
         self.Q_L = np.eye(12)*1.0
         self.P = solve_continuous_lyapunov(self.A_m.T, self.Q_L)
         # print(f"{self.P=}")
-        self.Gamma = np.diag([1.0, 1.0, 5.0, 2.0, 5.0, 1.0]) * 1e3
+        # self.Gamma = np.diag([1.0, 1.0, 5.0, 2.0, 5.0, 1.0]) * 1e3
+        self.Gamma = np.diag([1.0, 1.0, 5.0, 2.0, 5.0, 1.0]) * 1e5
         self.alpha_hat = np.zeros((6, 1))
         self.beta_hat = np.zeros((6, 1))
         
@@ -102,8 +103,8 @@ class SingleRigidBodyL1Adaptation:
         eps = 1.0
         s = np.full_like(x_e, 10) 
         h, dh_dx = math_utils.convex_function(alpha_hat, x_e, eps, s)
-        # return self.Gamma @ math_utils.proj(alpha_hat, y_alpha, h, dh_dx)
-        return self.Gamma @ y_alpha
+        return self.Gamma @ math_utils.proj(alpha_hat, y_alpha, h, dh_dx)
+        # return self.Gamma @ y_alpha
         
     def _beta_hat_dot(self, beta_hat, e, e_hat):
         e_tilde = e_hat - e
@@ -113,8 +114,8 @@ class SingleRigidBodyL1Adaptation:
         eps = 1.0
         s = np.full_like(x_e, 10) 
         h, dh_dx = math_utils.convex_function(beta_hat, x_e, eps, s)
-        # return self.Gamma @ math_utils.proj(beta_hat, y_beta, h, dh_dx)
-        return self.Gamma @ y_beta
+        return self.Gamma @ math_utils.proj(beta_hat, y_beta, h, dh_dx)
+        # return self.Gamma @ y_beta
         
     def __call__(self, e, e_hat):
         #TODO integrate alpha_hat, beta_hat with scipy

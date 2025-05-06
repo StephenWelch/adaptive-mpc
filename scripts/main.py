@@ -1,3 +1,4 @@
+from tracemalloc import start
 import mujoco
 import mujoco.viewer
 import casadi as ca
@@ -34,13 +35,13 @@ def main():
     G = dynamics.get_G()
 
     # PD gains for baseline controller
-    K_P = -np.diag([
-        100, 100, 100,
+    K_P = -0.1*np.diag([
+        1000, 1000, 1000,
         1000, 1000, 1000
     ])
     K_D = -np.diag([
-        1, 1, 1,
-        1, 1, 1,
+        100, 100, 100,
+        100, 100, 100,
         # 0, 0, 0,
         # 0, 0, 0
     ])
@@ -121,7 +122,8 @@ def main():
 
         b_R_w = math_utils.rpy_to_rot_mat(*theta)
         I_G = b_R_w.T @ I_b @ b_R_w
-        M = dynamics.get_M(m, I_G)
+        m_scale = 0.25
+        M = dynamics.get_M(m*m_scale, I_G)
         A = dynamics.get_A(p_c, p_i)
         D = dynamics.get_D(*theta)
 
@@ -140,9 +142,12 @@ def main():
         )
 
         ctr = 0
+        start = time.time()
         while viewer.is_running():
             step_start = time.time()
 
+            # des_pitch = np.interp(np.sin(2*np.pi*0.5*data.time), [-1, 1], [np.deg2rad(-10), np.deg2rad(10)])
+            # theta_des = np.array([des_roll, des_pitch, des_yaw])
             # Step sim
             mujoco.mj_step(model, data)
             rr.set_time_seconds("mj_time", data.time)
@@ -158,7 +163,7 @@ def main():
             # Update SRB dynamics from sim state
             b_R_w = math_utils.rpy_to_rot_mat(*theta)
             I_G = b_R_w.T @ I_b @ b_R_w
-            M = dynamics.get_M(m, I_G)
+            M = dynamics.get_M(m*m_scale, I_G)
             A = dynamics.get_A(p_c, p_i)
 
             # Get ref state
@@ -188,11 +193,16 @@ def main():
             b_d = M @ (u_pd + theta_hat_lpf + G)
             b_d_ref = M_bar @ (u_pd_ref + theta_hat - theta_hat_lpf - G)
             # b_d_ref = M_bar @ (u_pd_ref - G)
-            
+   
             if ctr % solve_decimation == 0:
                 with solve_timer:
                     F_des = srb_qp(p_c, theta, p_c_dot, w_b, M, A, b_d, contact_flags)
                     F_des_ref = ref_srb_qp(p_c_ref, theta_ref, p_c_dot_ref, w_b_ref, M_bar, A_bar, b_d_ref, contact_flags)
+
+            # p_c_ref = p_c
+            # theta_ref = theta
+            # p_c_dot_ref = p_c_dot
+            # w_b_ref = w_b        
 
             print(f"Ref model:")
             print(f"{np.linalg.norm(e_hat)=}")
@@ -232,6 +242,9 @@ def main():
             for leg_idx, leg_name in enumerate(const.LEG_NAMES):
                 for ax_idx, ax_name in enumerate(["x", "y", "z"]):
                     rr.log(f"des_grf/{leg_name}/{ax_name}", rr.Scalar(F_des[leg_idx*3+ax_idx]))
+            for i, n in enumerate(["x", "y", "z"]):
+                rr.log(f"theta/{n}", rr.Scalar(theta[i]))
+                rr.log(f"theta_ref/{n}", rr.Scalar(theta_ref[i])) 
 
             ctr += 1
 
@@ -247,11 +260,11 @@ def main():
 
             time_elapsed = time.time() - step_start
             rtf = time_elapsed/model.opt.timestep
+            rr.log("rtf", rr.Scalar(rtf))
             if ctr % 100 == 0:
                 print(f"{rtf=}")
-            rr.log("rtf", rr.Scalar(rtf))
-            # if time_elapsed > model.opt.timestep:
-            #     print(f"Overrun! RTF: {time_elapsed/model.opt.timestep}") 
+            if time.time() - start > 20:
+                exit()
             # time_until_next_step = model.opt.timestep - time_elapsed
             # if time_until_next_step > 0:
             #     time.sleep(time_until_next_step)

@@ -35,11 +35,15 @@ def main():
     G = dynamics.get_G()
 
     # PD gains for baseline controller
-    K_P = -0.1*np.diag([
+    # K_P = 0.1*np.diag([
+    #     1000, 1000, 1000,
+    #     1000, 1000, 1000
+    # ])
+    K_P = np.diag([
         1000, 1000, 1000,
         1000, 1000, 1000
     ])
-    K_D = -np.diag([
+    K_D = np.diag([
         100, 100, 100,
         100, 100, 100,
         # 0, 0, 0,
@@ -61,9 +65,7 @@ def main():
             mujoco.mj_jacSite(model, data, jacp, None, model.site(site_name).id)
             J.append(jacp)
         J = np.vstack(J)
-        # F_z_flipped = F_des * np.array([1, 1, -1]).repeat(const.N_FEET)
-        # data.ctrl[:] = (J.T @ F_z_flipped)[6:]
-        data.ctrl[:] = (J.T @ F_des)[6:]
+        data.ctrl[:] = (J.T @ -F_des)[6:]
 
     rr.init("adaptive_mpc", spawn=True, default_enabled=True)
     rr.set_time_seconds("mj_time", 0)
@@ -95,7 +97,6 @@ def main():
         u_pd = np.zeros((6,1))
         u_pd_ref = np.zeros((6,1))
 
-
         p_i = [data.site(const.FEET_SITE_NAMES[n]).xpos for n in const.LEG_NAMES]
 
         p_c = data.sensor("trunk_com_pos").data
@@ -122,14 +123,15 @@ def main():
 
         b_R_w = math_utils.rpy_to_rot_mat(*theta)
         I_G = b_R_w.T @ I_b @ b_R_w
-        m_scale = 0.25
+        # m_scale = 0.25
+        m_scale = 1.0
         M = dynamics.get_M(m*m_scale, I_G)
         A = dynamics.get_A(p_c, p_i)
         D = dynamics.get_D(*theta)
 
         b_R_w_ref = math_utils.rpy_to_rot_mat(*theta_ref)
         I_G_bar = b_R_w_ref.T @ I_b @ b_R_w_ref
-        M_bar = dynamics.get_M(m, I_G)
+        M_bar = dynamics.get_M(m*m_scale, I_G)
         A_bar = dynamics.get_A(p_c_ref, p_i)
         H_bar = dynamics.get_H(M_bar, A)
         D_bar = dynamics.get_D(*theta_ref)
@@ -141,13 +143,21 @@ def main():
             ),
         )
 
+        # input()
         ctr = 0
         start = time.time()
         while viewer.is_running():
             step_start = time.time()
 
             # des_pitch = np.interp(np.sin(2*np.pi*0.5*data.time), [-1, 1], [np.deg2rad(-10), np.deg2rad(10)])
+            # des_pitch_dot = np.interp(2*np.pi*0.5*np.cos(2*np.pi*0.5*data.time), [-1, 1], [-np.deg2rad(10), np.deg2rad(10)])
             # theta_des = np.array([des_roll, des_pitch, des_yaw])
+            # w_b_des = np.array([0, des_pitch_dot])
+            des_yaw = np.interp(np.sin(2*np.pi*0.5*data.time), [-1, 1], [np.deg2rad(-10), np.deg2rad(10)])
+            des_yaw_dot = np.interp(2*np.pi*0.5*np.cos(2*np.pi*0.5*data.time), [-1, 1], [-np.deg2rad(10), np.deg2rad(10)])
+            theta_des = np.array([des_roll, des_pitch, des_yaw])
+            w_b_des = np.array([0, 0, des_yaw_dot])
+
             # Step sim
             mujoco.mj_step(model, data)
             rr.set_time_seconds("mj_time", data.time)
@@ -162,6 +172,7 @@ def main():
 
             # Update SRB dynamics from sim state
             b_R_w = math_utils.rpy_to_rot_mat(*theta)
+            # b_R_w = math_utils.R_z(theta_ref[2]).T
             I_G = b_R_w.T @ I_b @ b_R_w
             M = dynamics.get_M(m*m_scale, I_G)
             A = dynamics.get_A(p_c, p_i)
@@ -171,8 +182,9 @@ def main():
 
             # Update SRB dynamics from ref state
             b_R_w_ref = math_utils.rpy_to_rot_mat(*theta_ref)
+            # b_R_w_ref = math_utils.R_z(theta_ref[2]).T
             I_G_bar = b_R_w_ref.T @ I_b @ b_R_w_ref
-            M_bar = dynamics.get_M(m, I_G_bar)
+            M_bar = dynamics.get_M(m*m_scale, I_G_bar)
             A_bar = dynamics.get_A(p_c_ref, p_i)
             H_bar = dynamics.get_H(M_bar, A_bar)
             # D_bar = dynamics.get_D(*theta_ref)
@@ -187,10 +199,10 @@ def main():
 
             # Get baseline control - accels
             u_pd = K @ e
-            u_pd_ref = -K @ e_hat
+            u_pd_ref = K @ e_hat
             
             # Accels -> Torques + Dynamic inversion
-            b_d = M @ (u_pd + theta_hat_lpf + G)
+            b_d = M @ (u_pd + theta_hat_lpf - G)
             b_d_ref = M_bar @ (u_pd_ref + theta_hat - theta_hat_lpf - G)
             # b_d_ref = M_bar @ (u_pd_ref - G)
    
@@ -219,10 +231,6 @@ def main():
             print(f"{p_c_dot=}")
             print(f"{w_b=}")
             print(f"{b_d=}")
-            
-            # print(f"{theta_hat=}")
-            # print(f"{theta_hat_lpf=}")
-
 
             # scene = viewer.user_scn
             # scene.ngeom += 1
@@ -238,13 +246,20 @@ def main():
             for i, n in enumerate(["pos/x", "pos/y", "pos/z", "rot/x", "rot/y", "rot/z"]):
                 rr.log(f"theta_hat/{n}", rr.Scalar(theta_hat[i]))
                 rr.log(f"theta_hat_lpf/{n}", rr.Scalar(theta_hat_lpf[i]))
-            
+                rr.log(f"des_wrench/{n}", rr.Scalar(b_d[i]))
             for leg_idx, leg_name in enumerate(const.LEG_NAMES):
                 for ax_idx, ax_name in enumerate(["x", "y", "z"]):
                     rr.log(f"des_grf/{leg_name}/{ax_name}", rr.Scalar(F_des[leg_idx*3+ax_idx]))
             for i, n in enumerate(["x", "y", "z"]):
                 rr.log(f"theta/{n}", rr.Scalar(theta[i]))
                 rr.log(f"theta_ref/{n}", rr.Scalar(theta_ref[i])) 
+                rr.log(f"theta_des/{n}", rr.Scalar(theta_des[i])) 
+            for i, n in enumerate(["x", "y", "z"]):
+                rr.log(f"pos/{n}", rr.Scalar(p_c[i]))
+                rr.log(f"pos_ref/{n}", rr.Scalar(p_c_ref[i])) 
+                rr.log(f"pos_des/{n}", rr.Scalar(p_c_des[i])) 
+            rr.log("err_norm", rr.Scalar(np.linalg.norm(e)))
+            rr.log("err_norm_ref", rr.Scalar(np.linalg.norm(e_hat)))
 
             ctr += 1
 
@@ -263,7 +278,7 @@ def main():
             rr.log("rtf", rr.Scalar(rtf))
             if ctr % 100 == 0:
                 print(f"{rtf=}")
-            if time.time() - start > 20:
+            if data.time > 8:
                 exit()
             # time_until_next_step = model.opt.timestep - time_elapsed
             # if time_until_next_step > 0:

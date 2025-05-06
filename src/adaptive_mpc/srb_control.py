@@ -88,7 +88,7 @@ class SingleRigidBodyL1Adaptation:
         self.P = solve_continuous_lyapunov(self.A_m.T, self.Q_L)
         # print(f"{self.P=}")
         # self.Gamma = np.diag([1.0, 1.0, 5.0, 2.0, 5.0, 1.0]) * 1e3
-        self.Gamma = np.diag([1.0, 1.0, 5.0, 2.0, 5.0, 1.0]) * 1e5
+        self.Gamma = np.diag([1.0, 1.0, 5.0, 2.0, 5.0, 1.0]) * 1e4
         self.alpha_hat = np.zeros((6, 1))
         self.beta_hat = np.zeros((6, 1))
         
@@ -111,8 +111,8 @@ class SingleRigidBodyL1Adaptation:
         y_beta = -self.B.T @ self.P @ e_tilde
 
         x_e = np.zeros_like(beta_hat)
-        eps = 1.0
-        s = np.full_like(x_e, 10) 
+        eps = 100.0
+        s = np.full_like(x_e, 10000) 
         h, dh_dx = math_utils.convex_function(beta_hat, x_e, eps, s)
         return self.Gamma @ math_utils.proj(beta_hat, y_beta, h, dh_dx)
         # return self.Gamma @ y_beta
@@ -142,16 +142,6 @@ class SingleRigidBodyL1Adaptation:
         # print(f"{np.linalg.norm(e)=}")
 
         return theta_hat, theta_hat_lpf
-    
-        
-# def compute_pd_accel(
-#     p_c, theta, p_c_dot, w_b, # SRB state
-#     des_p_c, des_theta, des_p_c_dot, des_w_b, # Desired SRB state
-#     K_P, K_D,
-# ):
-#     K = np.block([-K_P, -K_D])
-#     e = compute_error(p_c, theta, p_c_dot, w_b, des_p_c, des_theta, des_p_c_dot, des_w_b)
-#     return K @ e
 
 def compute_error(
     p_c, theta, p_c_dot, w_b, # SRB state
@@ -162,7 +152,7 @@ def compute_error(
     # b_R_w = math_utils.R_z(theta[2])
     return np.hstack([
         p_c - des_p_c,
-        math_utils.log_so3(R_des @ b_R_w).flatten(),
+        math_utils.log_so3(R_des.T @ b_R_w).flatten(),
         p_c_dot - des_p_c_dot,
         w_b - des_w_b,
     ]).reshape(12, 1)

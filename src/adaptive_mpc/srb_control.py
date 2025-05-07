@@ -44,8 +44,7 @@ class SingleRigidBodyQP:
         self.opti.set_value(self.S, S_)
 
     def __call__(self, 
-        p_c, theta, p_c_dot, w_b, # SRB state
-        M, A,                     # SRB dynamics
+        A,                     # SRB dynamics
         b,                        # Desired wrench
         contact_flags,            # Contact flags
     ):

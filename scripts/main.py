@@ -149,15 +149,6 @@ def main():
         while viewer.is_running():
             step_start = time.time()
 
-            # des_pitch = np.interp(np.sin(2*np.pi*0.5*data.time), [-1, 1], [np.deg2rad(-10), np.deg2rad(10)])
-            # des_pitch_dot = np.interp(2*np.pi*0.5*np.cos(2*np.pi*0.5*data.time), [-1, 1], [-np.deg2rad(10), np.deg2rad(10)])
-            # theta_des = np.array([des_roll, des_pitch, des_yaw])
-            # w_b_des = np.array([0, des_pitch_dot])
-            des_yaw = np.interp(np.sin(2*np.pi*0.5*data.time), [-1, 1], [np.deg2rad(-10), np.deg2rad(10)])
-            des_yaw_dot = np.interp(2*np.pi*0.5*np.cos(2*np.pi*0.5*data.time), [-1, 1], [-np.deg2rad(10), np.deg2rad(10)])
-            theta_des = np.array([des_roll, des_pitch, des_yaw])
-            w_b_des = np.array([0, 0, des_yaw_dot])
-
             # Step sim
             mujoco.mj_step(model, data)
             rr.set_time_seconds("mj_time", data.time)
@@ -208,8 +199,8 @@ def main():
    
             if ctr % solve_decimation == 0:
                 with solve_timer:
-                    F_des = srb_qp(p_c, theta, p_c_dot, w_b, M, A, b_d, contact_flags)
-                    F_des_ref = ref_srb_qp(p_c_ref, theta_ref, p_c_dot_ref, w_b_ref, M_bar, A_bar, b_d_ref, contact_flags)
+                    F_des = srb_qp(A, b_d, contact_flags)
+                    F_des_ref = ref_srb_qp(A_bar, b_d_ref, contact_flags)
 
             # p_c_ref = p_c
             # theta_ref = theta
